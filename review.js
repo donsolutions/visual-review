@@ -268,12 +268,18 @@
     document.querySelectorAll('.rm-edit-active').forEach(el => {
       el.classList.remove('rm-edit-active');
       el.removeEventListener('click', editClickHandler, true);
+      el.removeEventListener('blur', editBlurHandler);
       el.contentEditable = 'false';
     });
     if (state.activeEditEl) {
       finishEdit(state.activeEditEl);
       state.activeEditEl = null;
     }
+  }
+  function editBlurHandler(e) {
+    const el = e.currentTarget;
+    el.removeEventListener('blur', editBlurHandler);
+    finishEdit(el);
   }
   function editClickHandler(e) {
     if (state.mode !== 'edit') return;
@@ -284,16 +290,18 @@
     if (el.contentEditable === 'true') return;
     if (state.activeEditEl && state.activeEditEl !== el) finishEdit(state.activeEditEl);
     state.activeEditEl = el;
-    el.dataset.rmOriginal = el.innerText;
+    el.dataset.rmOriginalHtml = el.innerHTML;
     el.contentEditable = 'true';
     el.focus();
-    el.addEventListener('blur', () => finishEdit(el), { once: true });
+    el.addEventListener('blur', editBlurHandler);
+    showFormatToolbar(el);
   }
   function finishEdit(el) {
+    hideFormatToolbar();
     el.contentEditable = 'false';
-    const before = el.dataset.rmOriginal || '';
-    const after = el.innerText;
-    delete el.dataset.rmOriginal;
+    const before = el.dataset.rmOriginalHtml || '';
+    const after = el.innerHTML;
+    delete el.dataset.rmOriginalHtml;
     if (before === after) return;
     addAnnotation({
       type: 'edit',
@@ -302,6 +310,96 @@
       before,
       after,
     });
+  }
+
+  // ── format toolbar (B / I / U / link) ──────────────────────────────
+  let formatRepositionFns = [];
+  function showFormatToolbar(el) {
+    hideFormatToolbar();
+    const tb = document.createElement('div');
+    tb.className = 'rm-format-toolbar';
+    tb.innerHTML = `
+      <button data-cmd="bold" class="rm-fmt-bold" title="Bold (Cmd/Ctrl+B)"><strong>B</strong></button>
+      <button data-cmd="italic" class="rm-fmt-italic" title="Italic (Cmd/Ctrl+I)"><em>I</em></button>
+      <button data-cmd="underline" class="rm-fmt-underline" title="Underline (Cmd/Ctrl+U)"><u>U</u></button>
+      <span class="rm-fmt-divider"></span>
+      <button data-cmd="link" title="Add or edit link">🔗</button>
+      <button data-cmd="unlink" title="Remove link">⌫</button>
+    `;
+    root.appendChild(tb);
+    state.formatToolbar = tb;
+    positionFormatToolbar(tb, el);
+    // Never steal focus from the editable when interacting with the toolbar
+    tb.addEventListener('mousedown', e => e.preventDefault());
+    tb.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => runFormatCommand(btn.dataset.cmd));
+    });
+    const reposition = () => positionFormatToolbar(tb, el);
+    el.addEventListener('input', reposition);
+    window.addEventListener('scroll', reposition, { passive: true });
+    window.addEventListener('resize', reposition);
+    formatRepositionFns = [
+      () => el.removeEventListener('input', reposition),
+      () => window.removeEventListener('scroll', reposition),
+      () => window.removeEventListener('resize', reposition),
+    ];
+  }
+  function hideFormatToolbar() {
+    if (state.formatToolbar) {
+      state.formatToolbar.remove();
+      state.formatToolbar = null;
+    }
+    formatRepositionFns.forEach(fn => { try { fn(); } catch (e) {} });
+    formatRepositionFns = [];
+  }
+  function positionFormatToolbar(tb, el) {
+    const r = el.getBoundingClientRect();
+    const tbHeight = 40;
+    let top = r.top + window.scrollY - tbHeight;
+    if (top < window.scrollY + 4) top = r.bottom + window.scrollY + 4;
+    let left = r.left + window.scrollX;
+    // Clamp to viewport horizontally
+    const maxLeft = window.scrollX + window.innerWidth - tb.offsetWidth - 8;
+    if (left > maxLeft) left = maxLeft;
+    if (left < window.scrollX + 8) left = window.scrollX + 8;
+    tb.style.left = left + 'px';
+    tb.style.top = top + 'px';
+  }
+  function runFormatCommand(cmd) {
+    if (!cmd) return;
+    const el = state.activeEditEl;
+    if (cmd === 'link') {
+      if (!el) return;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+        alert('Select the text you want to link, then click 🔗.');
+        return;
+      }
+      const range = sel.getRangeAt(0).cloneRange();
+      const existingAnchor = sel.anchorNode && sel.anchorNode.parentElement
+        ? sel.anchorNode.parentElement.closest('a') : null;
+      const defaultUrl = existingAnchor && existingAnchor.href ? existingAnchor.href : 'https://';
+      // Detach blur so prompt() doesn't trigger finishEdit
+      el.removeEventListener('blur', editBlurHandler);
+      const url = prompt('Link URL (leave blank to remove the link):', defaultUrl);
+      // Restore focus + selection
+      el.focus();
+      const newSel = window.getSelection();
+      newSel.removeAllRanges();
+      newSel.addRange(range);
+      if (url !== null) {
+        if (!url.trim()) document.execCommand('unlink');
+        else document.execCommand('createLink', false, url.trim());
+      }
+      // Re-attach blur
+      el.addEventListener('blur', editBlurHandler);
+      return;
+    }
+    if (cmd === 'unlink') {
+      document.execCommand('unlink');
+      return;
+    }
+    document.execCommand(cmd);
   }
 
   // ── draw mode ──────────────────────────────────────────────────────
@@ -911,8 +1009,8 @@
       body = `<div class="rm-card-comment">${escapeHtml(a.comment)}</div>`;
     } else if (a.type === 'edit') {
       body = `<div class="rm-card-edit-diff">
-        <div class="rm-before">${escapeHtml(a.before)}</div>
-        <div class="rm-after">${escapeHtml(a.after)}</div>
+        <div class="rm-before">${a.before}</div>
+        <div class="rm-after">${a.after}</div>
       </div>`;
     } else if (a.type === 'draw') {
       body = `<div class="rm-card-comment" style="display:flex;align-items:center;gap:6px;">
@@ -1014,11 +1112,11 @@
       lines.push('');
       if (a.type === 'edit') {
         lines.push('**Before:**');
-        lines.push('```');
+        lines.push('```html');
         lines.push(a.before);
         lines.push('```');
         lines.push('**After:**');
-        lines.push('```');
+        lines.push('```html');
         lines.push(a.after);
         lines.push('```');
       } else if (a.type === 'comment') {

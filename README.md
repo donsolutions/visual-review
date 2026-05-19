@@ -55,7 +55,7 @@ To force-enable without a query param (e.g. inside a staging environment):
 | Button | What it does |
 |---|---|
 | 📌 **Pin** | Click any element to drop a numbered pin with a comment popover. |
-| ✏️ **Edit** | Click any text element to make it contenteditable. On blur, the before/after diff is recorded. |
+| ✏️ **Edit** | Click any text element to make it contenteditable. A floating toolbar appears with **B / I / U / 🔗 link / ⌫ unlink** — select text and apply formatting. On blur, the before/after HTML diff is recorded so formatting survives the export. |
 | ✍️ **Draw** | Freehand pen over the page with 5 colors. Strokes anchor to the section they're drawn in, so they reposition correctly on scroll, resize, and reload. |
 | ↕ **Layout** | Drag sections to reorder. Click × to mark a section for deletion. Hover between sections for "+ Add space here" (sm/md/lg). |
 | ➕ **Add** | Opens a palette of element types (headline, paragraph, button, bullet list, image, video, testimonial, divider, new section). Drag onto the page to insert; drop targets are detected at the cursor, so you can place elements between any two sibling elements inside any container. |
@@ -122,7 +122,7 @@ The selectors are unique per page, the diff for text edits is exact, and the str
 | Type | Fields |
 |---|---|
 | `comment` | selector, textPreview, anchor (ax, ay), comment |
-| `edit` | selector, before, after |
+| `edit` | selector, before (HTML), after (HTML) — preserves bold / italic / underline / links |
 | `draw` | selector (anchoring section), color, strokeWidth, points (normalized to anchor bbox) |
 | `move` | selector, fromIndex, toIndex, afterSelector, beforeSelector |
 | `delete` | selector |
