@@ -276,7 +276,9 @@
       state.activeEditEl = null;
     }
   }
+  let suppressBlur = false;
   function editBlurHandler(e) {
+    if (suppressBlur) return;
     const el = e.currentTarget;
     el.removeEventListener('blur', editBlurHandler);
     finishEdit(el);
@@ -291,18 +293,30 @@
     if (state.activeEditEl && state.activeEditEl !== el) finishEdit(state.activeEditEl);
     state.activeEditEl = el;
     el.dataset.rmOriginalHtml = el.innerHTML;
+    el.dataset.rmOriginalText = el.innerText;
     el.contentEditable = 'true';
     el.focus();
     el.addEventListener('blur', editBlurHandler);
     showFormatToolbar(el);
+  }
+  function normalizeForCompare(html) {
+    return String(html || '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/<br\s*\/?>/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
   function finishEdit(el) {
     hideFormatToolbar();
     el.contentEditable = 'false';
     const before = el.dataset.rmOriginalHtml || '';
     const after = el.innerHTML;
+    const beforeText = (el.dataset.rmOriginalText || '').trim();
+    const afterText = (el.innerText || '').trim();
     delete el.dataset.rmOriginalHtml;
-    if (before === after) return;
+    delete el.dataset.rmOriginalText;
+    // Skip when nothing meaningful changed: visible text identical AND normalized markup identical.
+    if (beforeText === afterText && normalizeForCompare(before) === normalizeForCompare(after)) return;
     addAnnotation({
       type: 'edit',
       selector: cssPath(el),
@@ -319,9 +333,9 @@
     const tb = document.createElement('div');
     tb.className = 'rm-format-toolbar';
     tb.innerHTML = `
-      <button data-cmd="bold" class="rm-fmt-bold" title="Bold (Cmd/Ctrl+B)"><strong>B</strong></button>
-      <button data-cmd="italic" class="rm-fmt-italic" title="Italic (Cmd/Ctrl+I)"><em>I</em></button>
-      <button data-cmd="underline" class="rm-fmt-underline" title="Underline (Cmd/Ctrl+U)"><u>U</u></button>
+      <button data-cmd="bold" class="rm-fmt-bold" title="Bold (Cmd/Ctrl+B)">B</button>
+      <button data-cmd="italic" class="rm-fmt-italic" title="Italic (Cmd/Ctrl+I)">I</button>
+      <button data-cmd="underline" class="rm-fmt-underline" title="Underline (Cmd/Ctrl+U)">U</button>
       <span class="rm-fmt-divider"></span>
       <button data-cmd="link" title="Add or edit link">🔗</button>
       <button data-cmd="unlink" title="Remove link">⌫</button>
@@ -353,21 +367,21 @@
     formatRepositionFns = [];
   }
   function positionFormatToolbar(tb, el) {
+    // .rm-root is position:fixed, so toolbar uses viewport coords (no scrollX/Y).
     const r = el.getBoundingClientRect();
     const tbHeight = 40;
-    let top = r.top + window.scrollY - tbHeight;
-    if (top < window.scrollY + 4) top = r.bottom + window.scrollY + 4;
-    let left = r.left + window.scrollX;
-    // Clamp to viewport horizontally
-    const maxLeft = window.scrollX + window.innerWidth - tb.offsetWidth - 8;
+    let top = r.top - tbHeight - 4;
+    if (top < 4) top = r.bottom + 4;
+    let left = r.left;
+    const maxLeft = window.innerWidth - tb.offsetWidth - 8;
     if (left > maxLeft) left = maxLeft;
-    if (left < window.scrollX + 8) left = window.scrollX + 8;
+    if (left < 8) left = 8;
     tb.style.left = left + 'px';
     tb.style.top = top + 'px';
   }
   function runFormatCommand(cmd) {
     if (!cmd) return;
-    const el = state.activeEditEl;
+    const el = state.activeEditEl || document.activeElement;
     if (cmd === 'link') {
       if (!el) return;
       const sel = window.getSelection();
@@ -379,10 +393,9 @@
       const existingAnchor = sel.anchorNode && sel.anchorNode.parentElement
         ? sel.anchorNode.parentElement.closest('a') : null;
       const defaultUrl = existingAnchor && existingAnchor.href ? existingAnchor.href : 'https://';
-      // Detach blur so prompt() doesn't trigger finishEdit
-      el.removeEventListener('blur', editBlurHandler);
+      // Suppress blur-driven finishEdit/save while prompt() takes focus
+      suppressBlur = true;
       const url = prompt('Link URL (leave blank to remove the link):', defaultUrl);
-      // Restore focus + selection
       el.focus();
       const newSel = window.getSelection();
       newSel.removeAllRanges();
@@ -391,8 +404,7 @@
         if (!url.trim()) document.execCommand('unlink');
         else document.execCommand('createLink', false, url.trim());
       }
-      // Re-attach blur
-      el.addEventListener('blur', editBlurHandler);
+      suppressBlur = false;
       return;
     }
     if (cmd === 'unlink') {
@@ -852,7 +864,14 @@
       <div class="rm-added-content" contenteditable="true">${pal.html}</div>
     `;
     const content = wrapper.querySelector('.rm-added-content');
+    content.addEventListener('focus', () => {
+      state.activeEditEl = content;
+      showFormatToolbar(content);
+    });
     content.addEventListener('blur', () => {
+      if (suppressBlur) return;
+      hideFormatToolbar();
+      if (state.activeEditEl === content) state.activeEditEl = null;
       const id = wrapper.dataset.rmAddedId;
       if (!id) return;
       updateAnnotation(id, { html: content.innerHTML });
