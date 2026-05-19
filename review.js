@@ -255,6 +255,7 @@
   function enterEditMode() {
     document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,span,button,label,strong,em,td,th,blockquote').forEach(el => {
       if (el.closest('.rm-root')) return;
+      if (el.closest('.rm-added-element')) return; // added elements have their own edit flow
       if (!el.innerText || !el.innerText.trim()) return;
       const onlyTextOrInline = Array.from(el.childNodes).every(n =>
         n.nodeType === 3 || (n.nodeType === 1 && /^(b|i|em|strong|u|br|span|a|small|mark)$/i.test(n.tagName))
@@ -307,6 +308,14 @@
       .trim();
   }
   function finishEdit(el) {
+    if (!el) return;
+    // Already finalized (no original captured) — clear state and bail.
+    if (!('rmOriginalHtml' in el.dataset) && !('rmOriginalText' in el.dataset)) {
+      hideFormatToolbar();
+      if (state.activeEditEl === el) state.activeEditEl = null;
+      if (el.contentEditable === 'true') el.contentEditable = 'false';
+      return;
+    }
     hideFormatToolbar();
     el.contentEditable = 'false';
     const before = el.dataset.rmOriginalHtml || '';
@@ -315,7 +324,7 @@
     const afterText = (el.innerText || '').trim();
     delete el.dataset.rmOriginalHtml;
     delete el.dataset.rmOriginalText;
-    // Skip when nothing meaningful changed: visible text identical AND normalized markup identical.
+    if (state.activeEditEl === el) state.activeEditEl = null;
     if (beforeText === afterText && normalizeForCompare(before) === normalizeForCompare(after)) return;
     addAnnotation({
       type: 'edit',
@@ -343,10 +352,32 @@
     root.appendChild(tb);
     state.formatToolbar = tb;
     positionFormatToolbar(tb, el);
-    // Never steal focus from the editable when interacting with the toolbar
-    tb.addEventListener('mousedown', e => e.preventDefault());
+    // Save the selection at mousedown — that's the last moment before any focus shift
+    // could clear it. We restore it on click so commands always run against the user's
+    // actual selection, even when mousedown.preventDefault isn't enough on its own.
+    let savedRange = null;
+    tb.addEventListener('mousedown', e => {
+      e.preventDefault();
+      suppressBlur = true;
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) savedRange = sel.getRangeAt(0).cloneRange();
+    });
     tb.querySelectorAll('button').forEach(btn => {
-      btn.addEventListener('click', () => runFormatCommand(btn.dataset.cmd));
+      btn.addEventListener('click', () => {
+        const editEl = state.activeEditEl;
+        if (editEl && editEl.isConnected) {
+          editEl.focus();
+          if (savedRange) {
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            try { sel.addRange(savedRange); } catch (e) {}
+          }
+        }
+        try { runFormatCommand(btn.dataset.cmd); }
+        finally {
+          setTimeout(() => { suppressBlur = false; }, 0);
+        }
+      });
     });
     const reposition = () => positionFormatToolbar(tb, el);
     el.addEventListener('input', reposition);
