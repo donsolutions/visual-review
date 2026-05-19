@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visual Review — Install</title>
+<style>
+  :root {
+    --fg: #1a1a1a;
+    --fg-2: #4a4a4a;
+    --fg-3: #6b7280;
+    --bg: #ffffff;
+    --bg-2: #f9fafb;
+    --bg-3: #f3f4f6;
+    --border: #e5e7eb;
+    --accent: #0066cc;
+    --accent-2: #003d7a;
+    --cta: #16a34a;
+    --cta-hover: #128a3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    color: var(--fg);
+    line-height: 1.6;
+    background: var(--bg);
+  }
+  h1, h2, h3 { line-height: 1.2; margin: 0; color: var(--fg); }
+  h1 { font-size: 44px; font-weight: 800; letter-spacing: -0.02em; }
+  h2 { font-size: 24px; font-weight: 700; }
+  h3 { font-size: 17px; font-weight: 600; }
+  p { margin: 0; max-width: 60ch; }
+  code {
+    background: var(--bg-3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .container { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+  header { padding: 48px 0 24px; text-align: center; }
+  header .repo {
+    display: inline-block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    color: var(--fg-3);
+    margin-bottom: 16px;
+    text-decoration: none;
+  }
+  header .repo:hover { color: var(--accent); }
+  header p {
+    margin: 16px auto 0;
+    color: var(--fg-2);
+    font-size: 17px;
+  }
+  .hero-card {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 36px 32px;
+    text-align: center;
+    margin: 32px 0 48px;
+  }
+  .hero-card h2 { margin-bottom: 8px; }
+  .hero-card p { margin: 0 auto 24px; color: var(--fg-2); }
+  .drag-btn {
+    display: inline-block;
+    padding: 16px 32px;
+    background: var(--cta);
+    color: #fff;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 17px;
+    text-decoration: none;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.25);
+    cursor: grab;
+    user-select: none;
+    transition: transform 0.1s, box-shadow 0.15s;
+  }
+  .drag-btn:hover {
+    background: var(--cta-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(22, 163, 74, 0.35);
+  }
+  .drag-btn:active { cursor: grabbing; transform: translateY(0); }
+  .drag-hint {
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--fg-3);
+  }
+  section { padding: 24px 0; }
+  section h2 { margin-bottom: 16px; }
+  ol, ul { padding-left: 24px; margin: 0; }
+  ol li, ul li { margin-bottom: 8px; color: var(--fg-2); }
+  ol li strong, ul li strong { color: var(--fg); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .card {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .card h3 { margin-bottom: 6px; font-size: 15px; }
+  .card p { font-size: 14px; color: var(--fg-2); margin: 0; }
+  .fallback {
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 14px;
+    color: #78350f;
+  }
+  .fallback strong { color: #78350f; }
+  .raw-code {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    overflow-x: auto;
+    white-space: nowrap;
+    color: var(--fg-2);
+  }
+  footer {
+    padding: 48px 0;
+    text-align: center;
+    color: var(--fg-3);
+    font-size: 13px;
+    border-top: 1px solid var(--border);
+    margin-top: 48px;
+  }
+  footer a { color: var(--fg-3); }
+  @media (max-width: 600px) {
+    h1 { font-size: 32px; }
+    .grid { grid-template-columns: 1fr; }
+    .hero-card { padding: 24px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<header>
+  <a class="repo" href="https://github.com/donsolutions/visual-review">github.com/donsolutions/visual-review</a>
+  <h1>Visual Review</h1>
+  <p>A bookmarklet that adds a Pastel-style annotation overlay to any webpage. Drop comments, edit text, draw, drag sections, add elements — export everything as markdown for an AI coding assistant.</p>
+</header>
+
+<div class="hero-card">
+  <h2>Install in one second</h2>
+  <p>Drag this button to your bookmarks bar.</p>
+  <a class="drag-btn" href="javascript:(function(){if(window.__rmLoading)return;window.__rmLoading=true;window.__REVIEW_MODE__=true;var v='?v='+Date.now();var l=document.createElement('link');l.rel='stylesheet';l.href='https://cdn.jsdelivr.net/gh/donsolutions/visual-review@main/review.css'+v;document.head.appendChild(l);var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/gh/donsolutions/visual-review@main/review.js'+v;s.defer=true;document.body.appendChild(s);})();">📝 Visual Review</a>
+  <div class="drag-hint">Drag → drop on the bookmarks bar. If you don't see your bookmarks bar, press <code>Cmd+Shift+B</code> (Mac) or <code>Ctrl+Shift+B</code> (Windows/Linux).</div>
+</div>
+
+<section>
+  <h2>How to use</h2>
+  <ol>
+    <li><strong>Visit any page</strong> you want to review — your own landing page, a partner's site, a competitor, anything.</li>
+    <li><strong>Click the bookmark</strong> in your bookmarks bar. The toolbar appears in the bottom-right corner.</li>
+    <li><strong>Annotate.</strong> Pin comments, edit text, draw, drag sections, add new elements.</li>
+    <li><strong>📤 Send</strong> in the toolbar. The export — a structured markdown blob with stable CSS selectors for every annotation — copies to your clipboard.</li>
+    <li><strong>Paste it</strong> into Claude, ChatGPT, Cursor, or hand it to a developer. The format is designed for an AI assistant to apply every change without screenshots.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>What you get</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>📌 Pin comments</h3>
+      <p>Click any element, drop a numbered pin with a note.</p>
+    </div>
+    <div class="card">
+      <h3>✏️ Edit text inline</h3>
+      <p>Bold, italic, underline, links. Before/after diff captured.</p>
+    </div>
+    <div class="card">
+      <h3>✍️ Draw on the page</h3>
+      <p>Freehand pen, five colors. Strokes anchor to sections.</p>
+    </div>
+    <div class="card">
+      <h3>↕ Move and delete</h3>
+      <p>Drag sections to reorder. Mark sections for deletion.</p>
+    </div>
+    <div class="card">
+      <h3>➕ Add elements</h3>
+      <p>Drag headlines, buttons, images, testimonials onto the page.</p>
+    </div>
+    <div class="card">
+      <h3>📤 Export</h3>
+      <p>Markdown + JSON with CSS selectors for every change.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>If the bookmarklet doesn't load</h2>
+  <div class="fallback">
+    <p><strong>Some sites use Content Security Policy</strong> to block external scripts. If the bookmark click does nothing, open DevTools → Console. If you see a CSP error, use this fallback:</p>
+    <ol style="margin-top:12px;">
+      <li>DevTools → <strong>Sources</strong> → <strong>Snippets</strong> → <strong>New snippet</strong></li>
+      <li>Paste the contents of <a href="https://github.com/donsolutions/visual-review/blob/main/review.js">review.js</a></li>
+      <li>Right-click → <strong>Run</strong> (or <code>Cmd/Ctrl+Enter</code>)</li>
+      <li>Then paste the CSS via Console:<br>
+        <code style="font-size:11px;">var s=document.createElement('style');s.textContent=`/* paste review.css */`;document.head.appendChild(s);</code>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <h2>Bookmarklet source</h2>
+  <p style="color: var(--fg-2); margin-bottom: 12px; font-size: 14px;">If the drag-to-install button doesn't work in your browser, copy this URL and paste it as the value of a new bookmark:</p>
+  <div class="raw-code" id="raw-bookmarklet">javascript:(function(){if(window.__rmLoading)return;window.__rmLoading=true;window.__REVIEW_MODE__=true;var v='?v='+Date.now();var l=document.createElement('link');l.rel='stylesheet';l.href='https://cdn.jsdelivr.net/gh/donsolutions/visual-review@main/review.css'+v;document.head.appendChild(l);var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/gh/donsolutions/visual-review@main/review.js'+v;s.defer=true;document.body.appendChild(s);})();</div>
+</section>
+
+<footer>
+  <p>MIT licensed · <a href="https://github.com/donsolutions/visual-review">View on GitHub</a></p>
+</footer>
+
+</div>
+
+</body>
+</html>
