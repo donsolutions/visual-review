@@ -121,11 +121,7 @@
       </div>
     ` : '';
     toolbar.innerHTML = `
-      <div class="rm-name-prompt">
-        <input type="text" placeholder="Your name" value="${escapeHtml(state.reviewer)}" />
-      </div>
-      <div class="rm-divider"></div>
-      <button class="rm-pin-btn ${state.mode === 'pin' ? 'rm-active' : ''}" title="Pin a comment">📌 Pin</button>
+      <button class="rm-pin-btn ${state.mode === 'pin' ? 'rm-active' : ''}" title="Comment on something">💬 Comment</button>
       <button class="rm-edit-btn ${state.mode === 'edit' ? 'rm-active' : ''}" title="Edit text inline">✏️ Edit</button>
       <button class="rm-draw-btn ${state.mode === 'draw' ? 'rm-active' : ''}" title="Draw / circle">✍️ Draw</button>
       <button class="rm-layout-btn ${state.mode === 'layout' ? 'rm-active' : ''}" title="Move, delete, or add space between sections">↕ Layout</button>
@@ -144,11 +140,6 @@
     toolbar.querySelector('.rm-undo-btn').addEventListener('click', undoLastAction);
     toolbar.querySelector('.rm-panel-btn').addEventListener('click', togglePanel);
     toolbar.querySelector('.rm-export-btn').addEventListener('click', openExport);
-    const nameInput = toolbar.querySelector('.rm-name-prompt input');
-    nameInput.addEventListener('input', e => {
-      state.reviewer = e.target.value;
-      localStorage.setItem(NAME_KEY, state.reviewer);
-    });
     toolbar.querySelectorAll('.rm-swatch[data-color]').forEach(btn => {
       btn.addEventListener('click', () => { state.drawColor = btn.dataset.color; renderToolbar(); });
     });
@@ -237,14 +228,15 @@
   }
 
   function positionPopover(pop, x, y) {
+    // .rm-root is position:fixed, so the popover uses viewport coords (no scrollX/Y).
     const W = pop.offsetWidth, H = pop.offsetHeight;
     let left = x + 12, top = y + 12;
     if (left + W > window.innerWidth - 12) left = x - W - 12;
     if (top + H > window.innerHeight - 12) top = y - H - 12;
     if (left < 12) left = 12;
     if (top < 12) top = 12;
-    pop.style.left = (left + window.scrollX) + 'px';
-    pop.style.top = (top + window.scrollY) + 'px';
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
   }
 
   function closePopover() {
@@ -256,7 +248,10 @@
 
   // ── edit mode ──────────────────────────────────────────────────────
   function enterEditMode() {
-    document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,span,button,label,strong,em,td,th,blockquote').forEach(el => {
+    // Pick up any element whose children are only text / inline tags.
+    // Pre-headlines and eyebrow text often live in <div> wrappers, not headings —
+    // include div/section/article/aside/figcaption so they become editable too.
+    document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,span,button,label,strong,em,td,th,blockquote,div,section,article,aside,figcaption,small,mark,dt,dd,summary,figcaption').forEach(el => {
       if (el.closest('.rm-root')) return;
       // Non-card added elements have their own edit flow (single contenteditable blob).
       // Card descendants behave like normal page text — pick them up.
@@ -925,16 +920,50 @@
     });
   }
   function askSpaceSize(sec) {
-    const choice = prompt('Add space after this section. Size? (sm / md / lg)', 'md');
-    if (!choice) return;
-    const size = ['sm', 'md', 'lg'].includes(choice.trim().toLowerCase()) ? choice.trim().toLowerCase() : 'md';
-    addAnnotation({
-      type: 'space',
-      selector: cssPath(sec),
-      textPreview: textPreview(sec, 60),
-      position: 'after',
-      size,
+    closePopover();
+    const rect = sec.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.className = 'rm-popover rm-space-popover';
+    pop.innerHTML = `
+      <div style="font-size:11px;color:#6b7280;margin-bottom:8px;">Add space after this section</div>
+      <div class="rm-space-size-row">
+        <button class="rm-space-size-btn" data-size="sm">
+          <span class="rm-space-size-label">SM</span>
+          <span class="rm-space-size-hint">24px</span>
+        </button>
+        <button class="rm-space-size-btn rm-space-size-btn-default" data-size="md">
+          <span class="rm-space-size-label">MD</span>
+          <span class="rm-space-size-hint">48px</span>
+        </button>
+        <button class="rm-space-size-btn" data-size="lg">
+          <span class="rm-space-size-label">LG</span>
+          <span class="rm-space-size-hint">96px</span>
+        </button>
+      </div>
+      <div class="rm-popover-actions">
+        <button class="rm-cancel">Cancel</button>
+      </div>
+    `;
+    root.appendChild(pop);
+    // Anchor below the bottom edge of the section (where the "+ Add space here" button sits).
+    const anchorX = rect.left + rect.width / 2;
+    const anchorY = rect.bottom;
+    positionPopover(pop, anchorX, anchorY);
+    pop.querySelector('.rm-cancel').addEventListener('click', closePopover);
+    pop.querySelectorAll('.rm-space-size-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const size = btn.dataset.size;
+        addAnnotation({
+          type: 'space',
+          selector: cssPath(sec),
+          textPreview: textPreview(sec, 60),
+          position: 'after',
+          size,
+        });
+        closePopover();
+      });
     });
+    state.activePopover = pop;
   }
   function applyLayoutVisualState() {
     // Apply delete + space + move visuals to the page (idempotent — clears + reapplies)
@@ -1275,7 +1304,7 @@
   }
   function renderPanel() {
     panel.classList.toggle('rm-panel-open', state.panelOpen);
-    const items = state.annotations.map((a, i) => renderCard(a, i)).join('') || `<div class="rm-panel-empty">No annotations yet.<br>Use 📌 Pin or ✏️ Edit to start.</div>`;
+    const items = state.annotations.map((a, i) => renderCard(a, i)).join('') || `<div class="rm-panel-empty">No annotations yet.<br>Use 💬 Comment or ✏️ Edit to start.</div>`;
     panel.innerHTML = `
       <div class="rm-panel-header">
         <h3>Review (${state.annotations.length})</h3>
