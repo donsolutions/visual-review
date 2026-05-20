@@ -248,6 +248,14 @@
 
   // ── edit mode ──────────────────────────────────────────────────────
   function enterEditMode() {
+    // Defensive: clear any leftover state from older buggy sessions that may have
+    // baked contenteditable="false" or rm-edit-active into the live DOM. Without this,
+    // a stale contenteditable="false" descendant will block editing inside its parent.
+    document.querySelectorAll('.rm-edit-active').forEach(el => el.classList.remove('rm-edit-active'));
+    document.querySelectorAll('[contenteditable="false"]').forEach(el => {
+      if (el.closest('.rm-root')) return;
+      el.removeAttribute('contenteditable');
+    });
     // Pick up any element whose children are only text / inline tags.
     // Pre-headlines and eyebrow text often live in <div> wrappers, not headings —
     // include div/section/article/aside/figcaption so they become editable too.
@@ -272,21 +280,41 @@
     window.addEventListener('resize', repositionDeleteBtn);
   }
   function exitEditMode() {
-    document.querySelectorAll('.rm-edit-active').forEach(el => {
-      el.classList.remove('rm-edit-active');
-      el.removeEventListener('click', editClickHandler, true);
-      el.removeEventListener('blur', editBlurHandler);
-      el.contentEditable = 'false';
-    });
+    // Finish any active edit BEFORE stripping classes so finishEdit can read clean state.
     if (state.activeEditEl) {
       finishEdit(state.activeEditEl);
       state.activeEditEl = null;
     }
+    document.querySelectorAll('.rm-edit-active').forEach(el => {
+      el.classList.remove('rm-edit-active');
+      el.removeEventListener('click', editClickHandler, true);
+      el.removeEventListener('blur', editBlurHandler);
+      // Do NOT set contentEditable='false' here. Setting it adds contenteditable="false"
+      // permanently to every editable element on the page. On the next edit cycle, a parent
+      // that becomes contenteditable=true cannot edit its descendants (W3C spec: a
+      // contenteditable=false descendant is an uneditable island inside an editable parent).
+      // The active element's contenteditable is cleared in finishEdit via removeAttribute.
+    });
     document.removeEventListener('mouseover', editDeleteHoverHandler, true);
     document.removeEventListener('mouseout', editDeleteLeaveHandler, true);
     window.removeEventListener('scroll', repositionDeleteBtn);
     window.removeEventListener('resize', repositionDeleteBtn);
     hideDeleteBtn();
+  }
+  // Strip the editor's temporary markup (rm-edit-active class, contenteditable attribute)
+  // from captured HTML before saving. We never want these baked into annotations.
+  function cleanEditMarkup(html) {
+    if (!html) return html;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    tmp.querySelectorAll('.rm-edit-active').forEach(el => {
+      el.classList.remove('rm-edit-active');
+      if (el.getAttribute('class') === '') el.removeAttribute('class');
+    });
+    tmp.querySelectorAll('[contenteditable]').forEach(el => {
+      el.removeAttribute('contenteditable');
+    });
+    return tmp.innerHTML;
   }
   let suppressBlur = false;
   function editBlurHandler(e) {
@@ -304,7 +332,7 @@
     if (el.contentEditable === 'true') return;
     if (state.activeEditEl && state.activeEditEl !== el) finishEdit(state.activeEditEl);
     state.activeEditEl = el;
-    el.dataset.rmOriginalHtml = el.innerHTML;
+    el.dataset.rmOriginalHtml = cleanEditMarkup(el.innerHTML);
     el.dataset.rmOriginalText = el.innerText;
     el.contentEditable = 'true';
     el.focus();
@@ -324,13 +352,13 @@
     if (!('rmOriginalHtml' in el.dataset) && !('rmOriginalText' in el.dataset)) {
       hideFormatToolbar();
       if (state.activeEditEl === el) state.activeEditEl = null;
-      if (el.contentEditable === 'true') el.contentEditable = 'false';
+      el.removeAttribute('contenteditable');
       return;
     }
     hideFormatToolbar();
-    el.contentEditable = 'false';
+    el.removeAttribute('contenteditable');
     const before = el.dataset.rmOriginalHtml || '';
-    const after = el.innerHTML;
+    const after = cleanEditMarkup(el.innerHTML);
     const beforeText = (el.dataset.rmOriginalText || '').trim();
     const afterText = (el.innerText || '').trim();
     delete el.dataset.rmOriginalHtml;
@@ -349,7 +377,7 @@
     if (card) {
       const cardId = card.dataset.rmAddedId;
       const cardContent = card.querySelector('.rm-added-content');
-      if (cardId && cardContent) updateAnnotation(cardId, { html: cardContent.innerHTML });
+      if (cardId && cardContent) updateAnnotation(cardId, { html: cleanEditMarkup(cardContent.innerHTML) });
     }
   }
 
