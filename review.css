@@ -340,6 +340,9 @@
 .rm-format-toolbar button.rm-fmt-bold { font-weight: 800 !important; }
 .rm-format-toolbar button.rm-fmt-italic { font-style: italic !important; font-family: Georgia, "Times New Roman", serif !important; }
 .rm-format-toolbar button.rm-fmt-underline { text-decoration: underline !important; text-underline-offset: 2px !important; }
+.rm-format-toolbar button.rm-fmt-color { font-weight: 800 !important; }
+.rm-format-toolbar button.rm-fmt-color-primary { color: #F5A623 !important; }
+.rm-format-toolbar button.rm-fmt-color-secondary { color: #4DB5E5 !important; }
 .rm-format-toolbar .rm-fmt-divider {
   width: 1px;
   height: 18px;
@@ -746,6 +749,55 @@
   border-radius: 3px;
   margin: 4px 0;
   pointer-events: none;
+}
+
+/* Card added element — accepts drops inside its content area */
+.rm-added-element.rm-added-card {
+  outline-style: solid !important;
+}
+.rm-added-element.rm-added-card::before {
+  content: 'CARD';
+  background: #0F766E;
+}
+.rm-added-element.rm-added-card .rm-added-content {
+  /* Children inside the card are individually edited (see Edit mode). */
+}
+
+/* Inline element delete (×) shown on hover in Edit mode */
+.rm-element-delete {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #DC2626;
+  color: #fff;
+  border: 2px solid #fff;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  pointer-events: auto;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  z-index: 2147483602;
+  transition: background 0.12s, transform 0.12s;
+}
+.rm-element-delete:hover {
+  background: #B91C1C;
+  transform: scale(1.12);
+}
+
+/* Undo button in main toolbar */
+.rm-toolbar .rm-undo-btn[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.rm-toolbar .rm-undo-btn[disabled]:hover {
+  background: transparent;
 }
 
 @media (max-width: 640px) {

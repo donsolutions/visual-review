@@ -25,6 +25,7 @@
     { key: 'video',       label: 'Video',       icon: '▶', html: '<div style="background:#1a1a1a;color:#fff;padding:80px 20px;text-align:center;border-radius:8px;font-size:14px;position:relative;"><div style="font-size:36px;margin-bottom:8px;">▶</div>[ video placeholder ]</div>' },
     { key: 'quote',       label: 'Testimonial', icon: '"', html: '<blockquote style="border-left:4px solid #0089C7;padding:8px 16px;margin:0;font-style:italic;color:#374151;">"Testimonial text here." <footer style="margin-top:8px;font-style:normal;font-weight:600;font-size:14px;">— Name, location</footer></blockquote>' },
     { key: 'divider',     label: 'Divider',     icon: '─', html: '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0;">' },
+    { key: 'card',        label: 'Card',        icon: '▦', html: '<div style="border:1px solid #d4cfc7;border-radius:12px;padding:24px 28px;background:#fcfaf6;"><h3 style="margin:0 0 12px 0;font-size:1.25rem;font-weight:700;color:#1f3a52;">Card heading</h3><p style="margin:0;font-size:1rem;line-height:1.6;color:#374151;">Card body text. Click to edit. Drop more elements into this card.</p></div>' },
     { key: 'section',     label: 'New section', icon: '▭', html: '<section style="padding:60px 24px;background:#f9fafb;border-radius:8px;text-align:center;color:#6b7280;">[ empty section — drag more elements inside ]</section>' },
   ];
 
@@ -131,6 +132,7 @@
       <button class="rm-add-btn ${state.mode === 'add' ? 'rm-active' : ''}" title="Add new element (drag from palette)">➕ Add</button>
       ${swatches}
       <div class="rm-divider"></div>
+      <button class="rm-undo-btn" title="Undo last action"${state.annotations.length ? '' : ' disabled'}>↶ Undo</button>
       <button class="rm-panel-btn" title="Open review panel">📋 <span class="rm-count">${count}</span></button>
       <button class="rm-export-btn" title="Export review">📤 Send</button>
     `;
@@ -139,6 +141,7 @@
     toolbar.querySelector('.rm-draw-btn').addEventListener('click', () => setMode(state.mode === 'draw' ? null : 'draw'));
     toolbar.querySelector('.rm-layout-btn').addEventListener('click', () => setMode(state.mode === 'layout' ? null : 'layout'));
     toolbar.querySelector('.rm-add-btn').addEventListener('click', () => setMode(state.mode === 'add' ? null : 'add'));
+    toolbar.querySelector('.rm-undo-btn').addEventListener('click', undoLastAction);
     toolbar.querySelector('.rm-panel-btn').addEventListener('click', togglePanel);
     toolbar.querySelector('.rm-export-btn').addEventListener('click', openExport);
     const nameInput = toolbar.querySelector('.rm-name-prompt input');
@@ -255,7 +258,10 @@
   function enterEditMode() {
     document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,a,span,button,label,strong,em,td,th,blockquote').forEach(el => {
       if (el.closest('.rm-root')) return;
-      if (el.closest('.rm-added-element')) return; // added elements have their own edit flow
+      // Non-card added elements have their own edit flow (single contenteditable blob).
+      // Card descendants behave like normal page text — pick them up.
+      const inAdded = el.closest('.rm-added-element');
+      if (inAdded && !inAdded.classList.contains('rm-added-card')) return;
       if (!el.innerText || !el.innerText.trim()) return;
       const onlyTextOrInline = Array.from(el.childNodes).every(n =>
         n.nodeType === 3 || (n.nodeType === 1 && /^(b|i|em|strong|u|br|span|a|small|mark)$/i.test(n.tagName))
@@ -264,6 +270,11 @@
       el.classList.add('rm-edit-active');
       el.addEventListener('click', editClickHandler, true);
     });
+    // Inline element delete (×) on hover
+    document.addEventListener('mouseover', editDeleteHoverHandler, true);
+    document.addEventListener('mouseout', editDeleteLeaveHandler, true);
+    window.addEventListener('scroll', repositionDeleteBtn, { passive: true });
+    window.addEventListener('resize', repositionDeleteBtn);
   }
   function exitEditMode() {
     document.querySelectorAll('.rm-edit-active').forEach(el => {
@@ -276,6 +287,11 @@
       finishEdit(state.activeEditEl);
       state.activeEditEl = null;
     }
+    document.removeEventListener('mouseover', editDeleteHoverHandler, true);
+    document.removeEventListener('mouseout', editDeleteLeaveHandler, true);
+    window.removeEventListener('scroll', repositionDeleteBtn);
+    window.removeEventListener('resize', repositionDeleteBtn);
+    hideDeleteBtn();
   }
   let suppressBlur = false;
   function editBlurHandler(e) {
@@ -333,6 +349,13 @@
       before,
       after,
     });
+    // If this edit happened inside a card, keep the card's html annotation in sync
+    const card = el.closest('.rm-added-card');
+    if (card) {
+      const cardId = card.dataset.rmAddedId;
+      const cardContent = card.querySelector('.rm-added-content');
+      if (cardId && cardContent) updateAnnotation(cardId, { html: cardContent.innerHTML });
+    }
   }
 
   // ── format toolbar (B / I / U / link) ──────────────────────────────
@@ -345,6 +368,9 @@
       <button data-cmd="bold" class="rm-fmt-bold" title="Bold (Cmd/Ctrl+B)">B</button>
       <button data-cmd="italic" class="rm-fmt-italic" title="Italic (Cmd/Ctrl+I)">I</button>
       <button data-cmd="underline" class="rm-fmt-underline" title="Underline (Cmd/Ctrl+U)">U</button>
+      <span class="rm-fmt-divider"></span>
+      <button data-cmd="colorPrimary" class="rm-fmt-color rm-fmt-color-primary" title="Primary brand color (toggle)">P</button>
+      <button data-cmd="colorSecondary" class="rm-fmt-color rm-fmt-color-secondary" title="Secondary brand color (toggle)">S</button>
       <span class="rm-fmt-divider"></span>
       <button data-cmd="link" title="Add or edit link">🔗</button>
       <button data-cmd="unlink" title="Remove link">⌫</button>
@@ -413,6 +439,8 @@
   function runFormatCommand(cmd) {
     if (!cmd) return;
     const el = state.activeEditEl || document.activeElement;
+    if (cmd === 'colorPrimary') { applyBrandColor('primary'); return; }
+    if (cmd === 'colorSecondary') { applyBrandColor('secondary'); return; }
     if (cmd === 'link') {
       if (!el) return;
       const sel = window.getSelection();
@@ -443,6 +471,194 @@
       return;
     }
     document.execCommand(cmd);
+  }
+
+  // ── brand color toggles (Primary / Secondary in format toolbar) ────
+  function getBrandColor(which) {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const bodyStyle = document.body ? getComputedStyle(document.body) : null;
+    const candidates = which === 'primary'
+      ? ['--meso-primary', '--primary', '--brand-primary', '--orange-500', '--orange-700', '--accent']
+      : ['--meso-secondary', '--secondary', '--brand-secondary', '--blue-700', '--blue-500'];
+    for (const v of candidates) {
+      let val = rootStyle.getPropertyValue(v).trim();
+      if (!val && bodyStyle) val = bodyStyle.getPropertyValue(v).trim();
+      if (val) return val;
+    }
+    return which === 'primary' ? '#F5A623' : '#006A9E';
+  }
+  function normalizeColorString(c) {
+    if (!c) return '';
+    const tmp = document.createElement('div');
+    tmp.style.color = c;
+    document.body.appendChild(tmp);
+    const rgb = getComputedStyle(tmp).color;
+    tmp.remove();
+    return (rgb || '').toLowerCase();
+  }
+  function colorsMatch(a, b) {
+    if (!a || !b) return false;
+    return normalizeColorString(a) === normalizeColorString(b);
+  }
+  function applyBrandColor(which) {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      alert('Select the text you want to color, then click P or S.');
+      return;
+    }
+    const target = getBrandColor(which);
+    const current = document.queryCommandValue('foreColor');
+    const same = colorsMatch(current, target);
+    try { document.execCommand('styleWithCSS', false, true); } catch (e) {}
+    if (same) {
+      const defaultColor = (document.body && getComputedStyle(document.body).color) || '#1a1a1a';
+      document.execCommand('foreColor', false, defaultColor);
+    } else {
+      document.execCommand('foreColor', false, target);
+    }
+  }
+
+  // ── inline element delete (× on hover in Edit mode) ───────────────
+  let deleteBtnEl = null;
+  let deleteBtnTarget = null;
+  let deleteBtnHideTimer = null;
+  function ensureDeleteBtn() {
+    if (deleteBtnEl) return deleteBtnEl;
+    deleteBtnEl = document.createElement('button');
+    deleteBtnEl.className = 'rm-element-delete';
+    deleteBtnEl.innerHTML = '×';
+    deleteBtnEl.title = 'Delete this element';
+    deleteBtnEl.style.display = 'none';
+    root.appendChild(deleteBtnEl);
+    deleteBtnEl.addEventListener('mouseenter', () => {
+      if (deleteBtnHideTimer) { clearTimeout(deleteBtnHideTimer); deleteBtnHideTimer = null; }
+    });
+    deleteBtnEl.addEventListener('mouseleave', scheduleHideDeleteBtn);
+    deleteBtnEl.addEventListener('mousedown', e => e.preventDefault());
+    deleteBtnEl.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (deleteBtnTarget) deleteElementInline(deleteBtnTarget);
+      hideDeleteBtn();
+    });
+    return deleteBtnEl;
+  }
+  function isDeletable(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el === document.body || el === document.documentElement) return false;
+    if (el.closest('.rm-root')) return false;
+    if (/^(script|style|html|body|head|link|meta|noscript)$/i.test(el.tagName)) return false;
+    if (el.classList.contains('rm-added-remove')) return false;
+    // Suppress hover-× anywhere inside a non-card added wrapper —
+    // it has its own remove button and isn't sensibly sub-divided.
+    const wrapper = el.closest('.rm-added-element');
+    if (wrapper && !wrapper.classList.contains('rm-added-card')) return false;
+    return true;
+  }
+  function editDeleteHoverHandler(e) {
+    if (state.mode !== 'edit') return;
+    const target = e.target;
+    if (!isDeletable(target)) return;
+    showDeleteBtnFor(target);
+  }
+  function editDeleteLeaveHandler() {
+    if (state.mode !== 'edit') return;
+    scheduleHideDeleteBtn();
+  }
+  function showDeleteBtnFor(el) {
+    const btn = ensureDeleteBtn();
+    if (deleteBtnHideTimer) { clearTimeout(deleteBtnHideTimer); deleteBtnHideTimer = null; }
+    deleteBtnTarget = el;
+    positionDeleteBtnAt(el);
+    btn.style.display = 'flex';
+  }
+  function positionDeleteBtnAt(el) {
+    if (!deleteBtnEl) return;
+    const r = el.getBoundingClientRect();
+    deleteBtnEl.style.top = (r.top + window.scrollY - 10) + 'px';
+    deleteBtnEl.style.left = (r.right + window.scrollX - 14) + 'px';
+  }
+  function repositionDeleteBtn() {
+    if (deleteBtnTarget && deleteBtnEl && deleteBtnEl.style.display !== 'none') {
+      if (!deleteBtnTarget.isConnected) { hideDeleteBtn(); return; }
+      positionDeleteBtnAt(deleteBtnTarget);
+    }
+  }
+  function scheduleHideDeleteBtn() {
+    if (deleteBtnHideTimer) clearTimeout(deleteBtnHideTimer);
+    deleteBtnHideTimer = setTimeout(hideDeleteBtn, 140);
+  }
+  function hideDeleteBtn() {
+    if (deleteBtnEl) deleteBtnEl.style.display = 'none';
+    deleteBtnTarget = null;
+  }
+  function deleteElementInline(el) {
+    if (!el || !el.parentNode) return;
+    // If this is an added-element wrapper, remove its annotation entirely (no restoration needed)
+    if (el.classList.contains('rm-added-element')) {
+      const id = el.dataset.rmAddedId;
+      if (id) deleteAnnotation(id);
+      el.remove();
+      return;
+    }
+    // Otherwise record a delete annotation with restoration data for undo
+    const parent = el.parentNode;
+    const next = el.nextElementSibling;
+    addAnnotation({
+      type: 'delete',
+      selector: cssPath(el),
+      parentSelector: cssPath(parent),
+      beforeSelector: next ? cssPath(next) : null,
+      textPreview: textPreview(el, 80),
+      outerHTML: el.outerHTML,
+      inline: true,
+    });
+    el.remove();
+  }
+
+  // ── undo last action ──────────────────────────────────────────────
+  function undoLastAction() {
+    if (!state.annotations.length) return;
+    const last = state.annotations[state.annotations.length - 1];
+    if (last.type === 'edit') {
+      const el = findBySelector(last.selector);
+      if (el && typeof last.before === 'string') {
+        el.innerHTML = last.before;
+        const card = el.closest('.rm-added-card');
+        if (card) {
+          const cardId = card.dataset.rmAddedId;
+          const cardContent = card.querySelector('.rm-added-content');
+          const cardAnn = state.annotations.find(a => a.id === cardId);
+          if (cardAnn && cardContent) cardAnn.html = cardContent.innerHTML;
+        }
+      }
+    } else if (last.type === 'delete' && last.outerHTML && last.parentSelector) {
+      const parent = findBySelector(last.parentSelector);
+      if (parent) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = last.outerHTML;
+        const node = tmp.firstChild;
+        if (node) {
+          const beforeSib = last.beforeSelector ? findBySelector(last.beforeSelector) : null;
+          if (beforeSib && beforeSib.parentNode === parent) parent.insertBefore(node, beforeSib);
+          else parent.appendChild(node);
+        }
+      }
+    } else if (last.type === 'card-drop' && last.cardId) {
+      const card = document.querySelector('.rm-added-card[data-rm-added-id="' + last.cardId + '"]');
+      if (card) {
+        const content = card.querySelector('.rm-added-content');
+        if (content && typeof last.cardHtmlBefore === 'string') {
+          content.innerHTML = last.cardHtmlBefore;
+          const cardAnn = state.annotations.find(a => a.id === last.cardId);
+          if (cardAnn) cardAnn.html = last.cardHtmlBefore;
+        }
+      }
+    }
+    // For add/draw/move/space/comment, removing the annotation + renderAll handles cleanup.
+    state.annotations.pop();
+    save();
+    renderAll();
   }
 
   // ── draw mode ──────────────────────────────────────────────────────
@@ -798,6 +1014,14 @@
     for (const node of stack) {
       if (!(node instanceof Element)) continue;
       if (node.closest('.rm-root')) continue;
+      // Card support: hovering inside a card's content area drops INTO the card.
+      const card = node.closest('.rm-added-card');
+      if (card) {
+        const cardContent = card.querySelector('.rm-added-content');
+        if (cardContent && cardContent.contains(node)) return cardContent;
+        // Hovering card chrome (label/remove btn) — drop into the card's parent
+        return card.parentElement;
+      }
       let el = node;
       // If the cursor is over an inline carrier (heading, paragraph, link…),
       // walk up to its block-level parent so we drop NEXT TO it, not inside it.
@@ -806,7 +1030,7 @@
       }
       if (!el || el === document.documentElement) continue;
       if (el.closest('.rm-root')) continue;
-      // Don't drop directly into an existing added wrapper's content div;
+      // Don't drop directly into an existing non-card added wrapper's content;
       // drop into its parent container instead.
       if (el.closest('.rm-added-element')) {
         const wrapper = el.closest('.rm-added-element');
@@ -858,6 +1082,34 @@
     if (!pal) { clearDropFeedback(); return; }
     const zone = getDropContainer(e.clientX, e.clientY) || lastDropTarget;
     if (!zone) { clearDropFeedback(); return; }
+
+    // Dropping into a card → insert raw HTML, update the card's annotation,
+    // and record a `card-drop` history entry so Undo can revert the drop.
+    const cardAncestor = zone.closest('.rm-added-card');
+    if (cardAncestor && zone.classList.contains('rm-added-content')) {
+      const cardHtmlBefore = zone.innerHTML;
+      const { before: cardBefore } = positionIndicator(zone, e.clientY);
+      const tmp = document.createElement('div');
+      tmp.innerHTML = pal.html;
+      const newNode = tmp.firstChild;
+      if (newNode) {
+        if (cardBefore && cardBefore.parentNode === zone) zone.insertBefore(newNode, cardBefore);
+        else zone.appendChild(newNode);
+      }
+      clearDropFeedback();
+      const cardId = cardAncestor.dataset.rmAddedId;
+      if (cardId) updateAnnotation(cardId, { html: zone.innerHTML });
+      addAnnotation({
+        type: 'card-drop',
+        cardId,
+        elementType: pal.key,
+        cardHtmlBefore,
+        parentSelector: cssPath(zone),
+        textPreview: 'Added ' + pal.label + ' to card',
+      });
+      return;
+    }
+
     const { before } = positionIndicator(zone, e.clientY);
     const wrapper = buildAddedWrapper(pal);
     const id = uid();
@@ -886,27 +1138,33 @@
     renderPanel();
   }
   function buildAddedWrapper(pal) {
+    const isCard = pal.key === 'card';
     const wrapper = document.createElement('div');
-    wrapper.className = 'rm-added-element';
+    wrapper.className = 'rm-added-element' + (isCard ? ' rm-added-card' : '');
     wrapper.dataset.rmAddedType = pal.key;
     wrapper.style.margin = '12px 0';
     wrapper.innerHTML = `
       <button class="rm-added-remove" title="Remove">×</button>
-      <div class="rm-added-content" contenteditable="true">${pal.html}</div>
+      <div class="rm-added-content"${isCard ? '' : ' contenteditable="true"'}>${pal.html}</div>
     `;
     const content = wrapper.querySelector('.rm-added-content');
-    content.addEventListener('focus', () => {
-      state.activeEditEl = content;
-      showFormatToolbar(content);
-    });
-    content.addEventListener('blur', () => {
-      if (suppressBlur) return;
-      hideFormatToolbar();
-      if (state.activeEditEl === content) state.activeEditEl = null;
-      const id = wrapper.dataset.rmAddedId;
-      if (!id) return;
-      updateAnnotation(id, { html: content.innerHTML });
-    });
+    if (!isCard) {
+      // Single contenteditable blob for plain added elements.
+      content.addEventListener('focus', () => {
+        state.activeEditEl = content;
+        showFormatToolbar(content);
+      });
+      content.addEventListener('blur', () => {
+        if (suppressBlur) return;
+        hideFormatToolbar();
+        if (state.activeEditEl === content) state.activeEditEl = null;
+        const id = wrapper.dataset.rmAddedId;
+        if (!id) return;
+        updateAnnotation(id, { html: content.innerHTML });
+      });
+    }
+    // Cards: children are edited via the normal Edit-mode flow (see enterEditMode).
+    // finishEdit syncs the card's `html` annotation after each child edit.
     wrapper.querySelector('.rm-added-remove').addEventListener('click', e => {
       e.stopPropagation();
       const id = wrapper.dataset.rmAddedId;
@@ -1052,7 +1310,7 @@
     });
   }
   function renderCard(a, i) {
-    const labels = { comment: 'Comment', edit: 'Edit', draw: 'Draw', move: 'Move', delete: 'Delete', space: 'Add space', add: 'Add element' };
+    const labels = { comment: 'Comment', edit: 'Edit', draw: 'Draw', move: 'Move', delete: 'Delete', space: 'Add space', add: 'Add element', 'card-drop': 'Add to card' };
     const numClass = a.type === 'edit' || a.type === 'draw' ? 'rm-card-num rm-card-num-edit' : 'rm-card-num';
     let body = '';
     if (a.type === 'comment') {
@@ -1075,6 +1333,8 @@
       body = `<div class="rm-card-comment">Add <strong>${escapeHtml(a.size.toUpperCase())}</strong> space ${a.position} this section</div>`;
     } else if (a.type === 'add') {
       body = `<div class="rm-card-comment"><strong>${escapeHtml(a.elementType)}</strong><div style="margin-top:4px;font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f3f4f6;padding:6px;border-radius:4px;max-height:100px;overflow:auto;">${escapeHtml(a.html)}</div></div>`;
+    } else if (a.type === 'card-drop') {
+      body = `<div class="rm-card-comment">Added <strong>${escapeHtml(a.elementType)}</strong> inside an existing card</div>`;
     }
     const target = a.selector || a.parentSelector || '';
     return `
@@ -1197,6 +1457,10 @@
         lines.push('```html');
         lines.push(a.html);
         lines.push('```');
+      } else if (a.type === 'card-drop') {
+        lines.push(`**Add element inside an existing card** (type: ${a.elementType})`);
+        lines.push('Card container: `' + a.parentSelector + '`');
+        lines.push('See the parent card annotation for the full updated card HTML.');
       }
       lines.push('');
     });
